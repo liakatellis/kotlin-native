@@ -27,8 +27,7 @@ import org.jetbrains.kotlin.utils.addToStdlib.cast
 
 private class InteropCallContext(
         val symbols: KonanSymbols,
-        val builder: IrBuilderWithScope,
-        val failCompilation: (String) -> Nothing
+        val builder: IrBuilderWithScope
 ) {
     fun IrType.isCPointer() = this.isCPointer(symbols)
 
@@ -42,9 +41,8 @@ private class InteropCallContext(
 private inline fun <T> generateInteropCall(
         symbols: KonanSymbols,
         builder: IrBuilderWithScope,
-        noinline failCompilation: (String) -> Nothing,
         block: InteropCallContext.() -> T
-) = InteropCallContext(symbols, builder, failCompilation).block()
+) = InteropCallContext(symbols, builder).block()
 
 /**
  * Search for memory read/write function in [kotlinx.cinterop.nativeMemUtils] of a given [valueType].
@@ -298,17 +296,16 @@ private fun InteropCallContext.readObjectiveCReferenceFromMemory(
 internal fun tryGenerateInteropMemberAccess(
         callSite: IrCall,
         symbols: KonanSymbols,
-        builder: IrBuilderWithScope,
-        failCompilation: (String) -> Nothing
+        builder: IrBuilderWithScope
 ): IrExpression? = when {
     callSite.symbol.owner.isEnumVarValueAccessor(symbols) ->
-        generateInteropCall(symbols, builder, failCompilation) { generateEnumVarValueAccess(callSite) }
+        generateInteropCall(symbols, builder) { generateEnumVarValueAccess(callSite) }
     callSite.symbol.owner.isMemberAtAccessor() ->
-        generateInteropCall(symbols, builder, failCompilation) { generateMemberAtAccess(callSite) }
+        generateInteropCall(symbols, builder) { generateMemberAtAccess(callSite) }
     callSite.symbol.owner.isBitFieldAccessor() ->
-        generateInteropCall(symbols, builder, failCompilation) { generateBitFieldAccess(callSite) }
+        generateInteropCall(symbols, builder) { generateBitFieldAccess(callSite) }
     callSite.symbol.owner.isArrayMemberAtAccessor() ->
-        generateInteropCall(symbols, builder, failCompilation) { generateArrayMemberAtAccess(callSite) }
+        generateInteropCall(symbols, builder) { generateArrayMemberAtAccess(callSite) }
     else -> null
 }
 
@@ -341,7 +338,7 @@ private fun InteropCallContext.generateMemberAtAccess(callSite: IrCall): IrExpre
                 type.isCPointer() -> readPointerFromMemory(fieldPointer)
                 type.isNativePointed() -> readPointed(fieldPointer)
                 type.isSupportedReference() -> readObjectiveCReferenceFromMemory(fieldPointer, type)
-                else -> failCompilation("Unsupported struct field type: ${type.getClass()?.name}")
+                else -> error("Unsupported struct field type: ${type.getClass()?.name}")
             }
         }
         accessor.isSetter -> {
@@ -352,7 +349,7 @@ private fun InteropCallContext.generateMemberAtAccess(callSite: IrCall): IrExpre
                 type.isStoredInMemoryDirectly() -> writeValueToMemory(fieldPointer, value, type)
                 type.isCPointer() -> writePointerToMemory(fieldPointer, value, type)
                 type.isSupportedReference() -> writeObjCReferenceToMemory(fieldPointer, value)
-                else -> failCompilation("Unsupported struct field type: ${type.getClass()?.name}")
+                else -> error("Unsupported struct field type: ${type.getClass()?.name}")
             }
         }
         else -> error("Unexpected accessor function: ${accessor.name}")
