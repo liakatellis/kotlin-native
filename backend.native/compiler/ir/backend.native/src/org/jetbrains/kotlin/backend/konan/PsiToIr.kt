@@ -26,6 +26,7 @@ import org.jetbrains.kotlin.ir.descriptors.IrBuiltIns
 import org.jetbrains.kotlin.ir.symbols.IrSymbol
 import org.jetbrains.kotlin.ir.util.*
 import org.jetbrains.kotlin.ir.visitors.acceptVoid
+import org.jetbrains.kotlin.konan.target.CompilerOutputKind
 import org.jetbrains.kotlin.psi2ir.Psi2IrConfiguration
 import org.jetbrains.kotlin.psi2ir.Psi2IrTranslator
 import org.jetbrains.kotlin.resolve.BindingContext
@@ -56,6 +57,36 @@ internal fun Context.psiToIr(symbolTable: SymbolTable) {
             config.configuration.languageVersionSettings
     )
     val symbols = KonanSymbols(this, generatorContext.irBuiltIns, symbolTable, symbolTable.lazyWrapper, functionIrClassFactory)
+
+    if (config.produce == CompilerOutputKind.LIBRARY) {
+        // Enable lazy IR generation for newly-created symbols inside BE
+        stubGenerator.unboundSymbolGeneration = true
+
+        expectDescriptorToSymbol = mutableMapOf<DeclarationDescriptor, IrSymbol>()
+        val module = translator.generateModuleFragment(
+                generatorContext,
+                environment.getSourceFiles(),
+                listOf(stubGenerator),
+                pluginExtensions,
+                // TODO: This is a hack to allow platform libs to build in reasonable time.
+                // referenceExpectsForUsedActuals() appears to be quadratic in time because of
+                // how ExpectedActualResolver is implemented.
+                // Need to fix ExpectActualResolver to either cache expects or somehow reduce the member scope searches.
+                if (expectActualLinker) expectDescriptorToSymbol else null
+        )
+
+        if (this.stdlibModule in modulesWithoutDCE) {
+            functionIrClassFactory.buildAllClasses()
+        }
+
+        symbolTable.noUnboundLeft("Unbound symbols left after linker")
+
+        irModule = module
+        irModules = emptyMap()
+        ir.symbols = symbols
+
+        return
+    }
 
     val irProviderForCEnumsAndCStructs =
             IrProviderForCEnumAndCStructStubs(generatorContext, interopBuiltIns, symbols)
