@@ -328,7 +328,7 @@ internal fun KotlinStubs.generateObjCCall(
     ).name
     val targetFunctionName = "targetPtr"
 
-    val preparedReceiver = if (method.consumesReceiver()) {
+    val preparedReceiver = if (method.objCConsumesReceiver()) {
         when (receiver) {
             is ObjCCallReceiver.Regular -> irCall(symbols.interopObjCRetain.owner).apply {
                 putValueArgument(0, receiver.rawPtr)
@@ -432,7 +432,7 @@ private fun CCallbackBuilder.addParameter(it: IrValueParameter, functionParamete
 
     val valuePassing = stubs.mapFunctionParameterType(
             it.type,
-            retained = it.isConsumed(),
+            retained = it.isObjCConsumed(),
             variadic = false,
             location = location
     )
@@ -491,7 +491,7 @@ private fun KotlinStubs.generateCFunction(
     if (isObjCMethod) {
         val receiver = signature.dispatchReceiverParameter!!
         require(receiver.type.isObjCReferenceType(target, irBuiltIns)) { renderCompilerError(signature) }
-        val valuePassing = ObjCReferenceValuePassing(symbols, receiver.type, retained = signature.consumesReceiver())
+        val valuePassing = ObjCReferenceValuePassing(symbols, receiver.type, retained = signature.objCConsumesReceiver())
         val kotlinArgument = with(valuePassing) { callbackBuilder.receiveValue() }
         callbackBuilder.kotlinCallBuilder.arguments += kotlinArgument
 
@@ -582,7 +582,7 @@ private fun KotlinStubs.createFakeKotlinExternalFunction(
 }
 
 private fun getCStructType(kotlinClass: IrClass): CType? =
-        kotlinClass.getStructSpelling()?.let { CTypes.simple(it) }
+        kotlinClass.getCStructSpelling()?.let { CTypes.simple(it) }
 
 private fun KotlinStubs.getNamedCStructType(kotlinClass: IrClass): CType? {
     val cStructType = getCStructType(kotlinClass) ?: return null
@@ -619,7 +619,7 @@ private fun KotlinToCCallBuilder.mapCalleeFunctionParameter(
 
         else -> stubs.mapFunctionParameterType(
                 type,
-                retained = parameter?.isConsumed() ?: false,
+                retained = parameter?.isObjCConsumed() ?: false,
                 variadic = variadic,
                 location = argument
         )
@@ -642,7 +642,7 @@ private fun KotlinStubs.mapReturnType(
         signature: IrSimpleFunction?
 ): ValueReturning = when {
     type.isUnit() -> VoidReturning
-    else -> mapType(type, retained = signature?.returnsRetained() ?: false, variadic = false, location = location)
+    else -> mapType(type, retained = signature?.objCReturnsRetained() ?: false, variadic = false, location = location)
 }
 
 private fun KotlinStubs.mapBlockType(

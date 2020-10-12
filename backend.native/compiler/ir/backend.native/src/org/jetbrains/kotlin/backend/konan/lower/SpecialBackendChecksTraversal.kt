@@ -562,13 +562,13 @@ private class BackendChecker(val context: Context, val irFile: IrFile) : IrEleme
 }
 
 private fun BackendChecker.checkCanTryGenerateInteropMemberAccess(callSite: IrCall) = when {
-    callSite.symbol.owner.isEnumVarValueAccessor(symbols) -> true
-    callSite.symbol.owner.isMemberAtAccessor() -> {
+    callSite.symbol.owner.isCEnumVarValueAccessor(symbols) -> true
+    callSite.symbol.owner.isCStructMemberAtAccessor() -> {
         checkCanGenerateMemberAtAccess(callSite)
         true
     }
-    callSite.symbol.owner.isBitFieldAccessor() -> true
-    callSite.symbol.owner.isArrayMemberAtAccessor() -> true
+    callSite.symbol.owner.isCStructBitFieldAccessor() -> true
+    callSite.symbol.owner.isCStructArrayMemberAtAccessor() -> true
     else -> false
 }
 
@@ -576,16 +576,16 @@ private fun BackendChecker.checkCanGenerateMemberAtAccess(callSite: IrCall) {
     val accessor = callSite.symbol.owner
     if (accessor.isGetter) {
         val type = accessor.returnType
-        if (!type.isCEnumType() && !type.isStoredInMemoryDirectly() && !type.isCPointer(symbols)
-                && !type.isSupportedReference(symbols) && !type.isNativePointed(symbols)
+        if (!type.isCEnumType() && !type.isCStructFieldTypeStoredInMemoryDirectly() && !type.isCPointer(symbols)
+                && !type.isCStructFieldSupportedReferenceType(symbols) && !type.isNativePointed(symbols)
         ) {
             reportError(callSite, "Unsupported struct field type: ${type.getClass()?.name}")
         }
     }
     if (accessor.isSetter) {
         val type = accessor.valueParameters[0].type
-        if (!type.isCEnumType() && !type.isStoredInMemoryDirectly()
-                && !type.isCPointer(symbols) && !type.isSupportedReference(symbols)
+        if (!type.isCEnumType() && !type.isCStructFieldTypeStoredInMemoryDirectly()
+                && !type.isCPointer(symbols) && !type.isCStructFieldSupportedReferenceType(symbols)
         ) {
             reportError(callSite, "Unsupported struct field type: ${type.getClass()?.name}")
         }
@@ -831,7 +831,7 @@ private fun BackendChecker.checkCanMapType(
             val kotlinClass = (type as IrSimpleType).arguments.singleOrNull()?.typeOrNull?.getClass()
                     ?: reportUnsupportedType("must be parameterized with concrete class")
 
-            kotlinClass.getStructSpelling()
+            kotlinClass.getCStructSpelling()
                     ?: reportUnsupportedType("not a structure or too complex")
         }
 

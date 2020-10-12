@@ -33,7 +33,7 @@ private class InteropCallContext(
 
     fun IrType.isNativePointed() = this.isNativePointed(symbols)
 
-    fun IrType.isSupportedReference() = this.isSupportedReference(symbols)
+    fun IrType.isSupportedReference() = this.isCStructFieldSupportedReferenceType(symbols)
 
     val irBuiltIns: IrBuiltIns = builder.context.irBuiltIns
 }
@@ -298,13 +298,13 @@ internal fun tryGenerateInteropMemberAccess(
         symbols: KonanSymbols,
         builder: IrBuilderWithScope
 ): IrExpression? = when {
-    callSite.symbol.owner.isEnumVarValueAccessor(symbols) ->
+    callSite.symbol.owner.isCEnumVarValueAccessor(symbols) ->
         generateInteropCall(symbols, builder) { generateEnumVarValueAccess(callSite) }
-    callSite.symbol.owner.isMemberAtAccessor() ->
+    callSite.symbol.owner.isCStructMemberAtAccessor() ->
         generateInteropCall(symbols, builder) { generateMemberAtAccess(callSite) }
-    callSite.symbol.owner.isBitFieldAccessor() ->
+    callSite.symbol.owner.isCStructBitFieldAccessor() ->
         generateInteropCall(symbols, builder) { generateBitFieldAccess(callSite) }
-    callSite.symbol.owner.isArrayMemberAtAccessor() ->
+    callSite.symbol.owner.isCStructArrayMemberAtAccessor() ->
         generateInteropCall(symbols, builder) { generateArrayMemberAtAccess(callSite) }
     else -> null
 }
@@ -334,7 +334,7 @@ private fun InteropCallContext.generateMemberAtAccess(callSite: IrCall): IrExpre
             val type = accessor.returnType
             when {
                 type.isCEnumType() -> readEnumValueFromMemory(fieldPointer, type)
-                type.isStoredInMemoryDirectly() -> readValueFromMemory(fieldPointer, type)
+                type.isCStructFieldTypeStoredInMemoryDirectly() -> readValueFromMemory(fieldPointer, type)
                 type.isCPointer() -> readPointerFromMemory(fieldPointer)
                 type.isNativePointed() -> readPointed(fieldPointer)
                 type.isSupportedReference() -> readObjectiveCReferenceFromMemory(fieldPointer, type)
@@ -346,7 +346,7 @@ private fun InteropCallContext.generateMemberAtAccess(callSite: IrCall): IrExpre
             val type = accessor.valueParameters[0].type
             when {
                 type.isCEnumType() -> writeEnumValueToMemory(fieldPointer, value, type)
-                type.isStoredInMemoryDirectly() -> writeValueToMemory(fieldPointer, value, type)
+                type.isCStructFieldTypeStoredInMemoryDirectly() -> writeValueToMemory(fieldPointer, value, type)
                 type.isCPointer() -> writePointerToMemory(fieldPointer, value, type)
                 type.isSupportedReference() -> writeObjCReferenceToMemory(fieldPointer, value)
                 else -> error("Unsupported struct field type: ${type.getClass()?.name}")

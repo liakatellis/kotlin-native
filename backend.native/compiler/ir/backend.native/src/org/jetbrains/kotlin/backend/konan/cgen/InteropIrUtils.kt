@@ -42,13 +42,13 @@ internal fun IrValueParameter.isWCStringParameter() = hasCCallAnnotation("WCStri
 
 internal fun IrValueParameter.isCStringParameter() = hasCCallAnnotation("CString")
 
-internal fun IrValueParameter.isConsumed() = hasCCallAnnotation("Consumed")
+internal fun IrValueParameter.isObjCConsumed() = hasCCallAnnotation("Consumed")
 
-internal fun IrSimpleFunction.consumesReceiver() = hasCCallAnnotation("ConsumesReceiver")
+internal fun IrSimpleFunction.objCConsumesReceiver() = hasCCallAnnotation("ConsumesReceiver")
 
-internal fun IrSimpleFunction.returnsRetained() = hasCCallAnnotation("ReturnsRetained")
+internal fun IrSimpleFunction.objCReturnsRetained() = hasCCallAnnotation("ReturnsRetained")
 
-internal fun IrClass.getStructSpelling(): String? =
+internal fun IrClass.getCStructSpelling(): String? =
         getAnnotationArgumentValue(FqName("kotlinx.cinterop.internal.CStruct"), "spelling")
 
 internal fun IrType.isTypeOfNullLiteral(): Boolean = this is IrSimpleType && hasQuestionMark
@@ -86,9 +86,9 @@ internal fun IrType.isCValue(symbols: KonanSymbols): Boolean = this.classOrNull 
 
 internal fun IrType.isNativePointed(symbols: KonanSymbols): Boolean = isSubtypeOfClass(symbols.nativePointed)
 
-internal fun IrType.isStoredInMemoryDirectly(): Boolean = isPrimitiveType() || isUnsigned() || isVector()
+internal fun IrType.isCStructFieldTypeStoredInMemoryDirectly(): Boolean = isPrimitiveType() || isUnsigned() || isVector()
 
-internal fun IrType.isSupportedReference(symbols: KonanSymbols): Boolean =
+internal fun IrType.isCStructFieldSupportedReferenceType(symbols: KonanSymbols): Boolean =
         isObjCObjectType()
                 || getClass()?.isAny() == true
                 || isStringClassType()
@@ -101,7 +101,7 @@ internal fun IrType.isSupportedReference(symbols: KonanSymbols): Boolean =
  * Check given function is a getter or setter
  * for `value` property of CEnumVar subclass.
  */
-internal fun IrFunction.isEnumVarValueAccessor(symbols: KonanSymbols): Boolean {
+internal fun IrFunction.isCEnumVarValueAccessor(symbols: KonanSymbols): Boolean {
     val parent = parent as? IrClass ?: return false
     return if (symbols.interopCEnumVar in parent.superClasses && isPropertyAccessor) {
         (propertyIfAccessor as IrProperty).name.asString() == "value"
@@ -110,9 +110,9 @@ internal fun IrFunction.isEnumVarValueAccessor(symbols: KonanSymbols): Boolean {
     }
 }
 
-internal fun IrFunction.isMemberAtAccessor() = hasAnnotation(RuntimeNames.cStructMemberAt)
+internal fun IrFunction.isCStructMemberAtAccessor() = hasAnnotation(RuntimeNames.cStructMemberAt)
 
-internal fun IrFunction.isArrayMemberAtAccessor() = hasAnnotation(RuntimeNames.cStructArrayMemberAt)
+internal fun IrFunction.isCStructArrayMemberAtAccessor() = hasAnnotation(RuntimeNames.cStructArrayMemberAt)
 
-internal fun IrFunction.isBitFieldAccessor() = hasAnnotation(RuntimeNames.cStructBitField)
+internal fun IrFunction.isCStructBitFieldAccessor() = hasAnnotation(RuntimeNames.cStructBitField)
 
