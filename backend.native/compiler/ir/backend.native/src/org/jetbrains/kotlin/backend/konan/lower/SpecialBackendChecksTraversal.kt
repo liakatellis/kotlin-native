@@ -12,12 +12,10 @@ import org.jetbrains.kotlin.backend.common.lower.ClosureAnnotator
 import org.jetbrains.kotlin.backend.konan.*
 import org.jetbrains.kotlin.backend.konan.cgen.*
 import org.jetbrains.kotlin.backend.konan.descriptors.allOverriddenFunctions
-import org.jetbrains.kotlin.backend.konan.descriptors.isFromInteropLibrary
 import org.jetbrains.kotlin.backend.konan.ir.*
 import org.jetbrains.kotlin.backend.konan.ir.companionObject
 import org.jetbrains.kotlin.backend.konan.llvm.IntrinsicType
 import org.jetbrains.kotlin.backend.konan.llvm.tryGetIntrinsicType
-import org.jetbrains.kotlin.backend.konan.serialization.resolveFakeOverrideMaybeAbstract
 import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
@@ -25,7 +23,6 @@ import org.jetbrains.kotlin.descriptors.isFinalClass
 import org.jetbrains.kotlin.ir.IrElement
 import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.expressions.*
-import org.jetbrains.kotlin.ir.expressions.impl.IrFunctionReferenceImpl
 import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
 import org.jetbrains.kotlin.ir.types.*
 import org.jetbrains.kotlin.ir.util.*
@@ -33,7 +30,6 @@ import org.jetbrains.kotlin.ir.visitors.IrElementVisitorVoid
 import org.jetbrains.kotlin.ir.visitors.acceptChildrenVoid
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.resolve.descriptorUtil.fqNameSafe
-import org.jetbrains.kotlin.resolve.descriptorUtil.module
 import org.jetbrains.kotlin.types.Variance
 
 internal class SpecialBackendChecksTraversal(val context: Context) : FileLoweringPass {
@@ -369,17 +365,11 @@ private class BackendChecker(val context: Context, val irFile: IrFile) : IrEleme
 
         when (val intrinsicType = tryGetIntrinsicType(expression)) {
             IntrinsicType.INTEROP_STATIC_C_FUNCTION -> {
-                val irCallableReference = unwrapStaticFunctionArgument(expression.getValueArgument(0)!!)
+                val target = getUnboundReferencedFunction(expression.getValueArgument(0)!!)
 
-                if (irCallableReference == null || irCallableReference.getArguments().isNotEmpty()
-                        || capturesAnything(irCallableReference.symbol.owner)
-                        || irCallableReference.symbol !is IrSimpleFunctionSymbol
-                ) {
+                if (target == null || target.symbol !is IrSimpleFunctionSymbol)
                     reportError(expression, "${callee.fqNameForIrSerialization} must take an unbound, non-capturing function or lambda")
-                }
 
-                val targetSymbol = irCallableReference.symbol
-                val target = targetSymbol.owner
                 val signatureTypes = target.allParameters.map { it.type } + target.returnType
 
                 callee.typeParameters.indices.forEach { index ->
@@ -437,13 +427,8 @@ private class BackendChecker(val context: Context, val irFile: IrFile) : IrEleme
                     reportError(expression, "unable to convert ${receiverType.toKotlinType()} to ${typeOperand.toKotlinType()}")
             }
             IntrinsicType.WORKER_EXECUTE -> {
-                val irCallableReference = unwrapStaticFunctionArgument(expression.getValueArgument(2)!!)
-
-                if (irCallableReference == null || irCallableReference.getArguments().isNotEmpty()
-                        || capturesAnything(irCallableReference.symbol.owner)
-                ) {
-                    reportError(expression, "${callee.fqNameForIrSerialization} must take an unbound, non-capturing function or lambda")
-                }
+                getUnboundReferencedFunction(expression.getValueArgument(2)!!)
+                        ?: reportError(expression, "${callee.fqNameForIrSerialization} must take an unbound, non-capturing function or lambda")
             }
             else -> { }
         }
@@ -475,15 +460,9 @@ private class BackendChecker(val context: Context, val irFile: IrFile) : IrEleme
         }
     }
 
-    private fun unwrapStaticFunctionArgument(argument: IrExpression) = when (argument) {
-        is IrFunctionReference -> argument
-        is IrFunctionExpression -> IrFunctionReferenceImpl(
-                argument.startOffset, argument.endOffset,
-                argument.type,
-                argument.function.symbol,
-                0,
-                argument.function.valueParameters.size
-        )
+    private fun getUnboundReferencedFunction(expression: IrExpression) = when (expression) {
+        is IrFunctionReference -> expression.symbol.owner.takeIf { expression.getArguments().isEmpty() && !capturesAnything(it) }
+        is IrFunctionExpression -> expression.function.takeIf { !capturesAnything(it) }
         else -> null
     }
 
