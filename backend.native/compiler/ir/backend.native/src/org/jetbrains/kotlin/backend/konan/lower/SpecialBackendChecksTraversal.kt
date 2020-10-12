@@ -361,8 +361,6 @@ private class BackendChecker(val context: Context, val irFile: IrFile) : IrEleme
         if (callee.annotations.hasAnnotation(RuntimeNames.cCall))
             checkCanGenerateCCall(expression, isInvoke = false)
 
-        checkCanTryGenerateInteropMemberAccess(expression)
-
         when (val intrinsicType = tryGetIntrinsicType(expression)) {
             IntrinsicType.INTEROP_STATIC_C_FUNCTION -> {
                 val target = getUnboundReferencedFunction(expression.getValueArgument(0)!!)
@@ -469,31 +467,6 @@ private class BackendChecker(val context: Context, val irFile: IrFile) : IrEleme
     private fun IrCall.getSingleTypeArgument(): IrType {
         val typeParameter = symbol.owner.typeParameters.single()
         return getTypeArgument(typeParameter.index)!!
-    }
-}
-
-private fun BackendChecker.checkCanTryGenerateInteropMemberAccess(callSite: IrCall) {
-    if (callSite.symbol.owner.isCStructMemberAtAccessor())
-        checkCanGenerateMemberAtAccess(callSite)
-}
-
-private fun BackendChecker.checkCanGenerateMemberAtAccess(callSite: IrCall) {
-    val accessor = callSite.symbol.owner
-    if (accessor.isGetter) {
-        val type = accessor.returnType
-        if (!type.isCEnumType() && !type.isCStructFieldTypeStoredInMemoryDirectly() && !type.isCPointer(symbols)
-                && !type.isCStructFieldSupportedReferenceType(symbols) && !type.isNativePointed(symbols)
-        ) {
-            reportError(callSite, "Unsupported struct field type: ${type.getClass()?.name}")
-        }
-    }
-    if (accessor.isSetter) {
-        val type = accessor.valueParameters[0].type
-        if (!type.isCEnumType() && !type.isCStructFieldTypeStoredInMemoryDirectly()
-                && !type.isCPointer(symbols) && !type.isCStructFieldSupportedReferenceType(symbols)
-        ) {
-            reportError(callSite, "Unsupported struct field type: ${type.getClass()?.name}")
-        }
     }
 }
 
@@ -721,14 +694,7 @@ private fun BackendChecker.checkCanMapType(
         type.isULong() -> return
         type.isVector() -> return
 
-        type.isCEnumType() -> {
-            val enumClass = type.getClass()!!
-            val value = enumClass.declarations
-                    .filterIsInstance<IrProperty>()
-                    .single { it.name.asString() == "value" }
-
-            checkCanMapType(value.getter!!.returnType, variadic, typeLocation)
-        }
+        type.isCEnumType() -> return
 
         type.isCValue(symbols) -> if (type.isNullable())
             reportUnsupportedType("must not be nullable")
