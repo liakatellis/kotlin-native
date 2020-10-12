@@ -52,7 +52,7 @@ private class BackendChecker(val context: Context, val irFile: IrFile) : IrEleme
     private val outerDeclarations = mutableListOf<IrDeclaration>()
 
     private val outerClass: IrClass? get() = outerDeclarations.last { it is IrClass } as? IrClass
-    private val outerFunction: IrClass? get() = outerDeclarations.last { it is IrClass } as? IrClass
+    private val outerFunction: IrFunction? get() = outerDeclarations.last { it is IrFunction } as? IrFunction
 
     private val outerAnnotators = mutableListOf<Lazy<ClosureAnnotator>>()
     private val functionAnnotators = mutableMapOf<IrFunction, Lazy<ClosureAnnotator>>()
@@ -99,16 +99,8 @@ private class BackendChecker(val context: Context, val irFile: IrFile) : IrEleme
         }
     }
 
-    private fun IrConstructor.isOverrideInit(): Boolean {
-        if (this.origin != IrDeclarationOrigin.DEFINED) {
-            // Make best efforts to skip generated stubs that might have got annotations
-            // copied from original declarations.
-            // For example, default argument stubs (https://youtrack.jetbrains.com/issue/KT-41910).
-            return false
-        }
-
-        return this.annotations.hasAnnotation(context.interopBuiltIns.objCOverrideInit.fqNameSafe)
-    }
+    private fun IrConstructor.isOverrideInit() =
+            this.annotations.hasAnnotation(context.interopBuiltIns.objCOverrideInit.fqNameSafe)
 
     private fun checkCanGenerateOverrideInit(irClass: IrClass, constructor: IrConstructor) {
         val superClass = irClass.getSuperClassNotAny()!!
@@ -192,16 +184,9 @@ private class BackendChecker(val context: Context, val irFile: IrFile) : IrEleme
         checkCanGenerateFunctionImp(property.setter!!)
     }
 
-    private fun getMethodSignatureEncoding(function: IrFunction) = when (function.valueParameters.size) {
-        // Note: these values are valid for x86_64 and arm64.
-        0 -> "v16@0:8"
-        1 -> "v24@0:8@16"
-        2 -> "v32@0:8@16@24"
-        else -> reportError(function, "Only 0, 1 or 2 parameters are supported here")
-    }
-
     private fun checkCanGenerateFunctionImp(function: IrFunction) {
-        getMethodSignatureEncoding(function)
+        if (function.valueParameters.size > 2)
+            reportError(function, "Only 0, 1 or 2 parameters are supported here")
     }
 
     private fun IrClass.hasFields() =
@@ -214,7 +199,6 @@ private class BackendChecker(val context: Context, val irFile: IrFile) : IrEleme
             }
 
     private fun checkKotlinObjCClass(irClass: IrClass) {
-        val uniq = mutableSetOf<String>()  // remove duplicates [KT-38234]
         for (declaration in irClass.declarations) {
             if (declaration is IrSimpleFunction && declaration.annotations.hasAnnotation(interop.objCAction.fqNameSafe))
                 checkCanGenerateActionImp(declaration)
@@ -223,18 +207,15 @@ private class BackendChecker(val context: Context, val irFile: IrFile) : IrEleme
             if (declaration is IrConstructor && declaration.isOverrideInit())
                 checkCanGenerateOverrideInit(irClass, declaration)
             if (declaration is IrSimpleFunction && declaration.isReal) {
-                declaration.overriddenSymbols.forEach {
-                    val selector = it.owner.getExternalObjCMethodInfo()?.selector
-                    if (selector != null && selector !in uniq) {
-                        uniq += selector
+                for (overriddenSymbol in declaration.overriddenSymbols)
+                    overriddenSymbol.owner.getExternalObjCMethodInfo()?.selector?.let {
                         checkCanGenerateCFunction(
                                 function = declaration,
-                                signature = it.owner,
+                                signature = overriddenSymbol.owner,
                                 isObjCMethod = true,
                                 location = declaration
                         )
                     }
-                }
             }
         }
 
@@ -337,20 +318,8 @@ private class BackendChecker(val context: Context, val irFile: IrFile) : IrEleme
             )
         }
 
-        val inlinedClass = callee.returnType.getInlinedClassNative()
-        if (inlinedClass?.descriptor == interop.cPointer || inlinedClass?.descriptor == interop.nativePointed)
+        if (callee.returnType.getInlinedClassNative()?.descriptor == interop.nativePointed)
             reportError(expression, "Native interop types constructors must not be called directly")
-    }
-
-    /**
-     * Handle `const val`s that come from interop libraries.
-     *
-     * We extract constant value from the backing field, and replace getter invocation with it.
-     */
-    private fun isInteropConstantRead(expression: IrCall) = expression.symbol.owner.let {
-        it.descriptor.module.isFromInteropLibrary()
-                && it.isGetter
-                && (it as? IrSimpleFunction)?.correspondingPropertySymbol?.owner?.isConst == true
     }
 
     override fun visitCall(expression: IrCall) {
@@ -366,7 +335,6 @@ private class BackendChecker(val context: Context, val irFile: IrFile) : IrEleme
                     call = expression,
                     arguments = arguments
             )
-            return
         }
 
         callee.getExternalObjCMethodInfo()?.let { _ ->
@@ -394,38 +362,12 @@ private class BackendChecker(val context: Context, val irFile: IrFile) : IrEleme
             }
         }
 
-        if ((callee as? IrSimpleFunction)?.resolveFakeOverrideMaybeAbstract()?.symbol
-                == symbols.interopNativePointedRawPtrGetter)
-            return
-
-        if (callee.annotations.hasAnnotation(RuntimeNames.cCall)) {
+        if (callee.annotations.hasAnnotation(RuntimeNames.cCall))
             checkCanGenerateCCall(expression, isInvoke = false)
-            return
-        }
 
-        if (checkCanTryGenerateInteropMemberAccess(expression))
-            return
-
-        if (isInteropConstantRead(expression))
-            return
+        checkCanTryGenerateInteropMemberAccess(expression)
 
         when (val intrinsicType = tryGetIntrinsicType(expression)) {
-            IntrinsicType.OBJC_INIT_BY -> {
-                val intrinsic = interop.objCObjectInitBy.name
-
-                val argument = expression.getValueArgument(0)!!
-                val constructorCall = argument as? IrConstructorCall
-                        ?: reportError(argument, "Argument of '$intrinsic' must be a constructor call")
-
-                val constructedClass = constructorCall.symbol.owner.constructedClass
-
-                val extensionReceiver = expression.extensionReceiver!!
-                if (extensionReceiver !is IrGetValue
-                        || !extensionReceiver.symbol.owner.isDispatchReceiverFor(constructedClass)
-                ) {
-                    reportError(extensionReceiver, "Receiver of '$intrinsic' must be a 'this' of the constructed class")
-                }
-            }
             IntrinsicType.INTEROP_STATIC_C_FUNCTION -> {
                 val irCallableReference = unwrapStaticFunctionArgument(expression.getValueArgument(0)!!)
 
@@ -545,31 +487,15 @@ private class BackendChecker(val context: Context, val irFile: IrFile) : IrEleme
         else -> null
     }
 
-    val IrValueParameter.isDispatchReceiver: Boolean
-        get() = when (val parent = this.parent) {
-            is IrClass -> true
-            is IrFunction -> parent.dispatchReceiverParameter == this
-            else -> false
-        }
-
-    private fun IrValueDeclaration.isDispatchReceiverFor(irClass: IrClass): Boolean =
-            this is IrValueParameter && isDispatchReceiver && type.getClass() == irClass
-
     private fun IrCall.getSingleTypeArgument(): IrType {
         val typeParameter = symbol.owner.typeParameters.single()
         return getTypeArgument(typeParameter.index)!!
     }
 }
 
-private fun BackendChecker.checkCanTryGenerateInteropMemberAccess(callSite: IrCall) = when {
-    callSite.symbol.owner.isCEnumVarValueAccessor(symbols) -> true
-    callSite.symbol.owner.isCStructMemberAtAccessor() -> {
+private fun BackendChecker.checkCanTryGenerateInteropMemberAccess(callSite: IrCall) {
+    if (callSite.symbol.owner.isCStructMemberAtAccessor())
         checkCanGenerateMemberAtAccess(callSite)
-        true
-    }
-    callSite.symbol.owner.isCStructBitFieldAccessor() -> true
-    callSite.symbol.owner.isCStructArrayMemberAtAccessor() -> true
-    else -> false
 }
 
 private fun BackendChecker.checkCanGenerateMemberAtAccess(callSite: IrCall) {

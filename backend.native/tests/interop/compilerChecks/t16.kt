@@ -1,4 +1,6 @@
 import platform.darwin.*
 import platform.Foundation.*
 
-fun foo(s: Array<Any?>) = NSLog("zzz", *s)
+class Z
+
+fun foo() = NSLog("zzz", Z())
