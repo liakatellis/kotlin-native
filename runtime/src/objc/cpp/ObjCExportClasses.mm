@@ -21,7 +21,6 @@
 #import "ObjCExport.h"
 #import "ObjCExportInit.h"
 #import "ObjCExportPrivate.h"
-#import "../../legacy_memory_manager/cpp/MemoryPrivate.hpp" // TODO: Use public Memory.h API
 #import "Runtime.h"
 #import "Utils.h"
 #import "Exceptions.h"

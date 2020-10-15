@@ -4,7 +4,6 @@
  */
 
 #include "Exceptions.h"
-#include "../../legacy_memory_manager/cpp/MemoryPrivate.hpp" // TODO: Use public Memory.h API
 #include "MemorySharedRefs.hpp"
 #include "Runtime.h"
 #include "Types.h"
