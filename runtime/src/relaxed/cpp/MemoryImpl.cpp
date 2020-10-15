@@ -65,4 +65,8 @@ void LeaveFrame(ObjHeader** start, int parameters, int count) {
   LeaveFrameRelaxed(start, parameters, count);
 }
 
+void UpdateStackRef(ObjHeader** location, const ObjHeader* object) {
+    UpdateStackRefRelaxed(location, object);
+}
+
 }  // extern "C"

@@ -65,4 +65,8 @@ void LeaveFrame(ObjHeader** start, int parameters, int count) {
   LeaveFrameStrict(start, parameters, count);
 }
 
+void UpdateStackRef(ObjHeader** location, const ObjHeader* object) {
+    UpdateStackRefStrict(location, object);
+}
+
 }  // extern "C"
