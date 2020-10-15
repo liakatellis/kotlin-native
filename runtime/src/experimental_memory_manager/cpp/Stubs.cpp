@@ -5,6 +5,34 @@
 
 #include "Memory.h"
 
+ALWAYS_INLINE bool isPermanentOrFrozen(const ObjHeader* obj) {
+    RuntimeCheck(false, "Unimplemented");
+}
+
+ALWAYS_INLINE bool isShareable(const ObjHeader* obj) {
+    RuntimeCheck(false, "Unimplemented");
+}
+
+ObjHeader** ObjHeader::GetWeakCounterLocation() {
+    RuntimeCheck(false, "Unimplemented");
+}
+
+#ifdef KONAN_OBJC_INTEROP
+
+void* ObjHeader::GetAssociatedObject() {
+    RuntimeCheck(false, "Unimplemented");
+}
+
+void** ObjHeader::GetAssociatedObjectLocation() {
+    RuntimeCheck(false, "Unimplemented");
+}
+
+void ObjHeader::SetAssociatedObject(void* obj) {
+    RuntimeCheck(false, "Unimplemented");
+}
+
+#endif // KONAN_OBJC_INTEROP
+
 extern "C" {
 
 MemoryState* InitMemory() {
@@ -187,10 +215,6 @@ bool IsForeignRefAccessible(ObjHeader* object, ForeignRefContext context) {
 }
 
 void AdoptReferenceFromSharedVariable(ObjHeader* object) {
-    RuntimeCheck(false, "Unimplemented");
-}
-
-MetaObjHeader* ObjHeader::createMetaObject(TypeInfo** location) {
     RuntimeCheck(false, "Unimplemented");
 }
 

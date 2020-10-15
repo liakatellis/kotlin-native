@@ -21,55 +21,7 @@
 #include "Common.h"
 #include "TypeInfo.h"
 #include "Atomic.h"
-
-typedef enum {
-  // Those bit masks are applied to refCount_ field.
-  // Container is normal thread-local container.
-  CONTAINER_TAG_LOCAL = 0,
-  // Container is frozen, could only refer to other frozen objects.
-  // Refcounter update is atomics.
-  CONTAINER_TAG_FROZEN = 1 | 1,  // shareable
-  // Stack container, no need to free, children cleanup still shall be there.
-  CONTAINER_TAG_STACK = 2,
-  // Atomic container, reference counter is atomically updated.
-  CONTAINER_TAG_SHARED = 3 | 1,  // shareable
-  // Shift to get actual counter.
-  CONTAINER_TAG_SHIFT = 2,
-  // Actual value to increment/decrement container by. Tag is in lower bits.
-  CONTAINER_TAG_INCREMENT = 1 << CONTAINER_TAG_SHIFT,
-  // Mask for container type.
-  CONTAINER_TAG_MASK = CONTAINER_TAG_INCREMENT - 1,
-
-  // Shift to get actual object count, if has it.
-  CONTAINER_TAG_GC_SHIFT     = 7,
-  CONTAINER_TAG_GC_MASK      = (1 << CONTAINER_TAG_GC_SHIFT) - 1,
-  CONTAINER_TAG_GC_INCREMENT = 1 << CONTAINER_TAG_GC_SHIFT,
-  // Color mask of a container.
-  CONTAINER_TAG_COLOR_SHIFT   = 3,
-  CONTAINER_TAG_GC_COLOR_MASK = (1 << CONTAINER_TAG_COLOR_SHIFT) - 1,
-  // Colors.
-  // In use or free.
-  CONTAINER_TAG_GC_BLACK  = 0,
-  // Possible member of garbage cycle.
-  CONTAINER_TAG_GC_GRAY   = 1,
-  // Member of garbage cycle.
-  CONTAINER_TAG_GC_WHITE  = 2,
-  // Possible root of cycle.
-  CONTAINER_TAG_GC_PURPLE = 3,
-  // Acyclic.
-  CONTAINER_TAG_GC_GREEN  = 4,
-  // Orange and red are currently unused.
-  // Candidate cycle awaiting epoch.
-  CONTAINER_TAG_GC_ORANGE = 5,
-  // Candidate cycle awaiting sigma computation.
-  CONTAINER_TAG_GC_RED    = 6,
-  // Individual state bits used during GC and freezing.
-  CONTAINER_TAG_GC_MARKED   = 1 << CONTAINER_TAG_COLOR_SHIFT,
-  CONTAINER_TAG_GC_BUFFERED = 1 << (CONTAINER_TAG_COLOR_SHIFT + 1),
-  CONTAINER_TAG_GC_SEEN     = 1 << (CONTAINER_TAG_COLOR_SHIFT + 2),
-  // If indeed has more that one object.
-  CONTAINER_TAG_GC_HAS_OBJECT_COUNT = 1 << (CONTAINER_TAG_COLOR_SHIFT + 3)
-} ContainerTag;
+#include "PointerBits.h"
 
 typedef enum {
   // Must match to permTag() in Kotlin.
@@ -79,257 +31,7 @@ typedef enum {
   OBJECT_TAG_MASK = (1 << 2) - 1
 } ObjectTag;
 
-typedef uint32_t container_size_t;
-
-// Header of all container objects. Contains reference counter.
-struct ContainerHeader {
-  // Reference counter of container. Uses CONTAINER_TAG_SHIFT, lower bits of counter
-  // for container type (for polymorphism in ::Release()).
-  uint32_t refCount_;
-  // Number of objects in the container.
-  uint32_t objectCount_;
-
-  inline bool local() const {
-      return (refCount_ & CONTAINER_TAG_MASK) == CONTAINER_TAG_LOCAL;
-  }
-
-  inline bool frozen() const {
-    return (refCount_ & CONTAINER_TAG_MASK) == CONTAINER_TAG_FROZEN;
-  }
-
-  inline void freeze() {
-    refCount_ = (refCount_ & ~CONTAINER_TAG_MASK) | CONTAINER_TAG_FROZEN;
-  }
-
-  inline void makeShared() {
-      refCount_ = (refCount_ & ~CONTAINER_TAG_MASK) | CONTAINER_TAG_SHARED;
-  }
-
-  inline bool shared() const {
-    return (refCount_ & CONTAINER_TAG_MASK) == CONTAINER_TAG_SHARED;
-  }
-
-  inline bool shareable() const {
-      return (tag() & 1) != 0; // CONTAINER_TAG_FROZEN || CONTAINER_TAG_SHARED
-  }
-
-  inline bool stack() const {
-    return (refCount_ & CONTAINER_TAG_MASK) == CONTAINER_TAG_STACK;
-  }
-
-  inline int refCount() const {
-    return (int)refCount_ >> CONTAINER_TAG_SHIFT;
-  }
-
-  inline void setRefCount(unsigned refCount) {
-    refCount_ = tag() | (refCount << CONTAINER_TAG_SHIFT);
-  }
-
-  template <bool Atomic>
-  inline void incRefCount() {
-#ifdef KONAN_NO_THREADS
-    refCount_ += CONTAINER_TAG_INCREMENT;
-#else
-    if (Atomic)
-      __sync_add_and_fetch(&refCount_, CONTAINER_TAG_INCREMENT);
-    else
-      refCount_ += CONTAINER_TAG_INCREMENT;
-#endif
-  }
-
-  template <bool Atomic>
-  inline bool tryIncRefCount() {
-    if (Atomic) {
-      while (true) {
-        uint32_t currentRefCount_ = refCount_;
-        if (((int)currentRefCount_ >> CONTAINER_TAG_SHIFT) > 0) {
-          if (compareAndSet(&refCount_, currentRefCount_, currentRefCount_ + CONTAINER_TAG_INCREMENT)) {
-            return true;
-          }
-        } else {
-          return false;
-        }
-      }
-    } else {
-      // Note: tricky case here is doing this during cycle collection.
-      // This can actually happen due to deallocation hooks.
-      // Fortunately by this point reference counts have been made precise again.
-      if (refCount() > 0) {
-        incRefCount</* Atomic = */ false>();
-        return true;
-      } else {
-        return false;
-      }
-    }
-  }
-
-  template <bool Atomic>
-  inline int decRefCount() {
-#ifdef KONAN_NO_THREADS
-    int value = refCount_ -= CONTAINER_TAG_INCREMENT;
-#else
-    int value = Atomic ?
-       __sync_sub_and_fetch(&refCount_, CONTAINER_TAG_INCREMENT) : refCount_ -= CONTAINER_TAG_INCREMENT;
-#endif
-    return value >> CONTAINER_TAG_SHIFT;
-  }
-
-  inline int decRefCount() {
-  #ifdef KONAN_NO_THREADS
-      int value = refCount_ -= CONTAINER_TAG_INCREMENT;
-  #else
-      int value = shareable() ?
-         __sync_sub_and_fetch(&refCount_, CONTAINER_TAG_INCREMENT) : refCount_ -= CONTAINER_TAG_INCREMENT;
-  #endif
-      return value >> CONTAINER_TAG_SHIFT;
-  }
-
-  inline unsigned tag() const {
-    return refCount_ & CONTAINER_TAG_MASK;
-  }
-
-  inline unsigned objectCount() const {
-    return (objectCount_ & CONTAINER_TAG_GC_HAS_OBJECT_COUNT) != 0 ?
-        (objectCount_ >> CONTAINER_TAG_GC_SHIFT) : 1;
-  }
-
-  inline void incObjectCount() {
-    RuntimeAssert((objectCount_ & CONTAINER_TAG_GC_HAS_OBJECT_COUNT) != 0, "Must have object count");
-    objectCount_ += CONTAINER_TAG_GC_INCREMENT;
-  }
-
-  inline void setObjectCount(int count) {
-    if (count == 1) {
-      objectCount_ &= ~CONTAINER_TAG_GC_HAS_OBJECT_COUNT;
-    } else {
-      objectCount_ = (count << CONTAINER_TAG_GC_SHIFT) | CONTAINER_TAG_GC_HAS_OBJECT_COUNT;
-    }
-  }
-
-  inline unsigned containerSize() const {
-    RuntimeAssert((objectCount_ & CONTAINER_TAG_GC_HAS_OBJECT_COUNT) == 0, "Must be single-object");
-    return (objectCount_ >> CONTAINER_TAG_GC_SHIFT);
-  }
-
-  inline void setContainerSize(unsigned size) {
-    RuntimeAssert((objectCount_ & CONTAINER_TAG_GC_HAS_OBJECT_COUNT) == 0, "Must not have object count");
-    objectCount_ = (objectCount_ & CONTAINER_TAG_GC_MASK) | (size << CONTAINER_TAG_GC_SHIFT);
-  }
-
-  inline bool hasContainerSize() {
-    return (objectCount_ & CONTAINER_TAG_GC_HAS_OBJECT_COUNT) == 0;
-  }
-
-  inline unsigned color() const {
-    return objectCount_ & CONTAINER_TAG_GC_COLOR_MASK;
-  }
-
-  inline void setColorAssertIfGreen(unsigned color) {
-    RuntimeAssert(this->color() != CONTAINER_TAG_GC_GREEN, "Must not be green");
-    setColorEvenIfGreen(color);
-  }
-
-  inline void setColorEvenIfGreen(unsigned color) {
-    // TODO: do we need atomic color update?
-    objectCount_ = (objectCount_ & ~CONTAINER_TAG_GC_COLOR_MASK) | color;
-  }
-
-  inline void setColorUnlessGreen(unsigned color) {
-    // TODO: do we need atomic color update?
-    unsigned objectCount = objectCount_;
-    if ((objectCount & CONTAINER_TAG_GC_COLOR_MASK) != CONTAINER_TAG_GC_GREEN)
-        objectCount_ = (objectCount & ~CONTAINER_TAG_GC_COLOR_MASK) | color;
-  }
-
-  inline bool buffered() const {
-    return (objectCount_ & CONTAINER_TAG_GC_BUFFERED) != 0;
-  }
-
-  inline void setBuffered() {
-    objectCount_ |= CONTAINER_TAG_GC_BUFFERED;
-  }
-
-  inline void resetBuffered() {
-    objectCount_ &= ~CONTAINER_TAG_GC_BUFFERED;
-  }
-
-  inline bool marked() const {
-    return (objectCount_ & CONTAINER_TAG_GC_MARKED) != 0;
-  }
-
-  inline void mark() {
-    objectCount_ |= CONTAINER_TAG_GC_MARKED;
-  }
-
-  inline void unMark() {
-    objectCount_ &= ~CONTAINER_TAG_GC_MARKED;
-  }
-
-  inline bool seen() const {
-    return (objectCount_ & CONTAINER_TAG_GC_SEEN) != 0;
-  }
-
-  inline void setSeen() {
-    objectCount_ |= CONTAINER_TAG_GC_SEEN;
-  }
-
-  inline void resetSeen() {
-    objectCount_ &= ~CONTAINER_TAG_GC_SEEN;
-  }
-
-  // Following operations only work on freed container which is in finalization queue.
-  // We cannot use 'this' here, as it conflicts with aliasing analysis in clang.
-  inline void setNextLink(ContainerHeader* next) {
-    *reinterpret_cast<ContainerHeader**>(this + 1) = next;
-  }
-
-  inline ContainerHeader* nextLink() {
-    return *reinterpret_cast<ContainerHeader**>(this + 1);
-  }
-};
-
 struct ArrayHeader;
-struct MetaObjHeader;
-
-template <typename T>
-ALWAYS_INLINE T* setPointerBits(T* ptr, unsigned bits) {
-  return reinterpret_cast<T*>(reinterpret_cast<uintptr_t>(ptr) | bits);
-}
-
-template <typename T>
-ALWAYS_INLINE T* clearPointerBits(T* ptr, unsigned bits) {
-  return reinterpret_cast<T*>(reinterpret_cast<uintptr_t>(ptr) & ~static_cast<uintptr_t>(bits));
-}
-
-template <typename T>
-ALWAYS_INLINE unsigned getPointerBits(T* ptr, unsigned bits) {
-  return reinterpret_cast<uintptr_t>(ptr) & static_cast<uintptr_t>(bits);
-}
-
-template <typename T>
-ALWAYS_INLINE bool hasPointerBits(T* ptr, unsigned bits) {
-  return getPointerBits(ptr, bits) != 0;
-}
-
-// Header for the meta-object.
-struct MetaObjHeader {
-  // Pointer to the type info. Must be first, to match ArrayHeader and ObjHeader layout.
-  const TypeInfo* typeInfo_;
-  // Container pointer.
-  ContainerHeader* container_;
-
-#ifdef KONAN_OBJC_INTEROP
-  void* associatedObject_;
-#endif
-
-  // Flags for the object state.
-  int32_t flags_;
-
-  struct {
-    // Strong reference to the counter object.
-    ObjHeader* counter_;
-  } WeakReference;
-};
 
 // Header of every object.
 struct ObjHeader {
@@ -339,30 +41,13 @@ struct ObjHeader {
     return clearPointerBits(typeInfoOrMeta_, OBJECT_TAG_MASK)->typeInfo_;
   }
 
-  bool has_meta_object() const {
-    auto* typeInfoOrMeta = clearPointerBits(typeInfoOrMeta_, OBJECT_TAG_MASK);
-    return (typeInfoOrMeta != typeInfoOrMeta->typeInfo_);
-  }
+  ObjHeader** GetWeakCounterLocation();
 
-  MetaObjHeader* meta_object() {
-     return has_meta_object() ?
-        reinterpret_cast<MetaObjHeader*>(clearPointerBits(typeInfoOrMeta_, OBJECT_TAG_MASK)) :
-        createMetaObject(&typeInfoOrMeta_);
-  }
-
-  void setContainer(ContainerHeader* container) {
-    meta_object()->container_ = container;
-    typeInfoOrMeta_ = setPointerBits(typeInfoOrMeta_, OBJECT_TAG_NONTRIVIAL_CONTAINER);
-  }
-
-  ContainerHeader* container() const {
-    unsigned bits = getPointerBits(typeInfoOrMeta_, OBJECT_TAG_MASK);
-    if ((bits & (OBJECT_TAG_PERMANENT_CONTAINER | OBJECT_TAG_NONTRIVIAL_CONTAINER)) == 0)
-      return reinterpret_cast<ContainerHeader*>(const_cast<ObjHeader*>(this)) - 1;
-    if ((bits & OBJECT_TAG_PERMANENT_CONTAINER) != 0)
-      return nullptr;
-    return (reinterpret_cast<MetaObjHeader*>(clearPointerBits(typeInfoOrMeta_, OBJECT_TAG_MASK)))->container_;
-  }
+#ifdef KONAN_OBJC_INTEROP
+  void* GetAssociatedObject();
+  void** GetAssociatedObjectLocation();
+  void SetAssociatedObject(void* obj);
+#endif
 
   inline bool local() const {
     unsigned bits = getPointerBits(typeInfoOrMeta_, OBJECT_TAG_MASK);
@@ -377,9 +62,6 @@ struct ObjHeader {
   inline bool permanent() const {
     return hasPointerBits(typeInfoOrMeta_, OBJECT_TAG_PERMANENT_CONTAINER);
   }
-
-  static MetaObjHeader* createMetaObject(TypeInfo** location);
-  static void destroyMetaObject(TypeInfo** location);
 };
 
 // Header of value type array objects. Keep layout in sync with that of object header.
@@ -397,10 +79,11 @@ struct ArrayHeader {
   uint32_t count_;
 };
 
-inline bool isPermanentOrFrozen(ObjHeader* obj) {
-    auto* container = obj->container();
-    return container == nullptr || container->frozen();
-}
+ALWAYS_INLINE bool isPermanentOrFrozen(const ObjHeader* obj);
+ALWAYS_INLINE bool isShareable(const ObjHeader* obj);
+
+class ForeignRefManager;
+typedef ForeignRefManager* ForeignRefContext;
 
 #ifdef __cplusplus
 extern "C" {
@@ -450,10 +133,6 @@ OBJ_GETTER(InitInstance,
 
 OBJ_GETTER(InitSharedInstance,
     ObjHeader** location, const TypeInfo* typeInfo, void (*ctor)(ObjHeader*));
-
-// Weak reference operations.
-// Atomically clears counter object reference.
-void WeakReferenceCounterClear(ObjHeader* counter);
 
 //
 // Object reference management.
@@ -542,10 +221,25 @@ void GC_RegisterWorker(void* worker) RUNTIME_NOTHROW;
 void GC_UnregisterWorker(void* worker) RUNTIME_NOTHROW;
 void GC_CollectorCallback(void* worker) RUNTIME_NOTHROW;
 
+bool TryAddHeapRef(const ObjHeader* object);
+
+void ReleaseHeapRef(const ObjHeader* object) RUNTIME_NOTHROW;
+void ReleaseHeapRefNoCollect(const ObjHeader* object) RUNTIME_NOTHROW;
+
+ForeignRefContext InitLocalForeignRef(ObjHeader* object);
+
+ForeignRefContext InitForeignRef(ObjHeader* object);
+void DeinitForeignRef(ObjHeader* object, ForeignRefContext context);
+
+bool IsForeignRefAccessible(ObjHeader* object, ForeignRefContext context);
+
+// Should be used when reference is read from a possibly shared variable,
+// and there's nothing else keeping the object alive.
+void AdoptReferenceFromSharedVariable(ObjHeader* object);
+
 #ifdef __cplusplus
 }
 #endif
-
 
 struct FrameOverlay {
   void* arena;
@@ -606,28 +300,5 @@ class ExceptionObjHolder {
  private:
    ObjHeader* obj_;
 };
-
-class ForeignRefManager;
-typedef ForeignRefManager* ForeignRefContext;
-
-extern "C" {
-
-bool TryAddHeapRef(const ObjHeader* object);
-
-void ReleaseHeapRef(const ObjHeader* object) RUNTIME_NOTHROW;
-void ReleaseHeapRefNoCollect(const ObjHeader* object) RUNTIME_NOTHROW;
-
-ForeignRefContext InitLocalForeignRef(ObjHeader* object);
-
-ForeignRefContext InitForeignRef(ObjHeader* object);
-void DeinitForeignRef(ObjHeader* object, ForeignRefContext context);
-
-bool IsForeignRefAccessible(ObjHeader* object, ForeignRefContext context);
-
-// Should be used when reference is read from a possibly shared variable,
-// and there's nothing else keeping the object alive.
-void AdoptReferenceFromSharedVariable(ObjHeader* object);
-
-} // extern "C"
 
 #endif // RUNTIME_MEMORY_H

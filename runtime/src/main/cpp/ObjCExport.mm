@@ -156,7 +156,7 @@ extern "C" id Kotlin_ObjCExport_CreateNSStringFromKString(ObjHeader* str) {
       length:numBytes
       encoding:NSUTF16LittleEndianStringEncoding];
 
-    if (!str->container()->shareable()) {
+    if (!isShareable(str)) {
       SetAssociatedObject(str, candidate);
     } else {
       id old = AtomicCompareAndSwapAssociatedObject(str, nullptr, candidate);
@@ -483,11 +483,9 @@ template <bool retainAutorelease>
 static ALWAYS_INLINE id Kotlin_ObjCExport_refToObjCImpl(ObjHeader* obj) {
   if (obj == nullptr) return nullptr;
 
-  if (obj->has_meta_object()) {
-    id associatedObject = GetAssociatedObject(obj);
-    if (associatedObject != nullptr) {
-      return retainAutorelease ? objc_retainAutoreleaseReturnValue(associatedObject) : associatedObject;
-    }
+  id associatedObject = GetAssociatedObject(obj);
+  if (associatedObject != nullptr) {
+    return retainAutorelease ? objc_retainAutoreleaseReturnValue(associatedObject) : associatedObject;
   }
 
   // TODO: propagate [retainAutorelease] to the code below.

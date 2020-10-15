@@ -91,7 +91,7 @@ static void injectToRuntime();
   candidate->permanent = obj->permanent();
 
   if (!obj->permanent()) { // TODO: permanent objects should probably be supported as custom types.
-    if (!obj->container()->shareable()) {
+    if (!isShareable(obj)) {
       SetAssociatedObject(obj, candidate);
     } else {
       id old = AtomicCompareAndSwapAssociatedObject(obj, nullptr, candidate);
