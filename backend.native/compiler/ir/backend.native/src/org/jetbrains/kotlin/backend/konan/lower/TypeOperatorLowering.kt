@@ -7,16 +7,11 @@ package org.jetbrains.kotlin.backend.konan.lower
 
 import org.jetbrains.kotlin.backend.common.CommonBackendContext
 import org.jetbrains.kotlin.backend.common.FileLoweringPass
-import org.jetbrains.kotlin.backend.common.lower.DeclarationIrBuilder
-import org.jetbrains.kotlin.backend.common.lower.at
-import org.jetbrains.kotlin.backend.common.lower.createIrBuilder
-import org.jetbrains.kotlin.backend.common.lower.irBlock
+import org.jetbrains.kotlin.backend.common.lower.*
 import org.jetbrains.kotlin.backend.konan.ir.containsNull
 import org.jetbrains.kotlin.backend.konan.ir.isSubtypeOf
-import org.jetbrains.kotlin.ir.IrStatement
 import org.jetbrains.kotlin.ir.builders.*
 import org.jetbrains.kotlin.ir.declarations.IrFile
-import org.jetbrains.kotlin.ir.declarations.IrFunction
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.expressions.IrTypeOperator
 import org.jetbrains.kotlin.ir.expressions.IrTypeOperatorCall
@@ -28,15 +23,12 @@ import org.jetbrains.kotlin.ir.types.makeNotNull
 import org.jetbrains.kotlin.ir.types.makeNullable
 import org.jetbrains.kotlin.ir.util.irCall
 import org.jetbrains.kotlin.ir.util.isSimpleTypeWithQuestionMark
-import org.jetbrains.kotlin.ir.visitors.IrElementTransformer
+import org.jetbrains.kotlin.ir.visitors.transformChildrenVoid
 
-internal class TypeOperatorLowering(val context: CommonBackendContext) : FileLoweringPass, IrElementTransformer<DeclarationIrBuilder?> {
+internal class TypeOperatorLowering(val context: CommonBackendContext) : FileLoweringPass, IrBuildingTransformer(context) {
     override fun lower(irFile: IrFile) {
         irFile.transformChildren(this, null)
     }
-
-    override fun visitFunction(declaration: IrFunction, data: DeclarationIrBuilder?): IrStatement =
-        super.visitFunction(declaration, context.createIrBuilder(declaration.symbol))
 
     private fun IrType.erasure(): IrType {
         if (this !is IrSimpleType) return this
@@ -58,7 +50,7 @@ internal class TypeOperatorLowering(val context: CommonBackendContext) : FileLow
         }
     }
 
-    private fun lowerCast(expression: IrTypeOperatorCall, builder: DeclarationIrBuilder): IrExpression {
+    private fun lowerCast(expression: IrTypeOperatorCall): IrExpression {
         builder.at(expression)
         val typeOperand = expression.typeOperand.erasure()
 
@@ -95,7 +87,7 @@ internal class TypeOperatorLowering(val context: CommonBackendContext) : FileLow
         }
     }
 
-    private fun lowerSafeCast(expression: IrTypeOperatorCall, builder: DeclarationIrBuilder): IrExpression {
+    private fun lowerSafeCast(expression: IrTypeOperatorCall): IrExpression {
         val typeOperand = expression.typeOperand.erasure()
 
         return builder.irBlock(expression) {
@@ -108,12 +100,12 @@ internal class TypeOperatorLowering(val context: CommonBackendContext) : FileLow
         }
     }
 
-    override fun visitTypeOperator(expression: IrTypeOperatorCall, data: DeclarationIrBuilder?): IrExpression {
-        expression.transformChildren(this, data)
+    override fun visitTypeOperator(expression: IrTypeOperatorCall): IrExpression {
+        expression.transformChildrenVoid(this)
 
         return when (expression.operator) {
-            IrTypeOperator.SAFE_CAST -> lowerSafeCast(expression, data!!)
-            IrTypeOperator.CAST -> lowerCast(expression, data!!)
+            IrTypeOperator.SAFE_CAST -> lowerSafeCast(expression)
+            IrTypeOperator.CAST -> lowerCast(expression)
             else -> expression
         }
     }
