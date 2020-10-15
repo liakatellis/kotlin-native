@@ -44,6 +44,7 @@ class KonanConfig(val project: Project, val configuration: CompilerConfiguration
             ?: target.family.isAppleFamily // Default is true for Apple targets.
 
     val memoryModel: MemoryModel get() = configuration.get(KonanConfigKeys.MEMORY_MODEL)!!
+    val memoryManager: MemoryManager get() = configuration.get(KonanConfigKeys.MEMORY_MANAGER)!!
 
     val needCompilerVerification: Boolean
         get() = configuration.get(KonanConfigKeys.VERIFY_COMPILER) ?:
@@ -115,9 +116,15 @@ class KonanConfig(val project: Project, val configuration: CompilerConfiguration
 
     internal val runtimeNativeLibraries: List<String> = mutableListOf<String>().apply {
         add(if (debug) "debug.bc" else "release.bc")
-        add(if (memoryModel == MemoryModel.STRICT) "strict.bc" else "relaxed.bc")
-        // TODO: Put it under a switch.
-        add("legacy_memory_manager.bc")
+        when (memoryManager) {
+            MemoryManager.LEGACY -> {
+                add(if (memoryModel == MemoryModel.STRICT) "strict.bc" else "relaxed.bc")
+                add("legacy_memory_manager.bc")
+            }
+            MemoryManager.EXPERIMENTAL -> {
+                add("experimental_memory_manager.bc")
+            }
+        }
         if (shouldCoverLibraries || shouldCoverSources) add("profileRuntime.bc")
         if (configuration.get(KonanConfigKeys.ALLOCATION_MODE) == "mimalloc") {
             if (!target.supportsMimallocAllocator()) {

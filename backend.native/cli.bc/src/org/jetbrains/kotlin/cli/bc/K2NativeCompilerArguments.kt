@@ -278,6 +278,9 @@ class K2NativeCompilerArguments : CommonCompilerArguments() {
     )
     var preLinkCaches: String? = null
 
+    @Argument(value="-memory-manager", valueDescription = "<manager>", description = "Memory manager to use, 'legacy' and 'experimental' are currently supported")
+    var memoryManager: String? = "legacy"
+
     override fun configureAnalysisFlags(collector: MessageCollector): MutableMap<AnalysisFlag<*>, Any> =
             super.configureAnalysisFlags(collector).also {
                 val useExperimental = it[AnalysisFlags.useExperimental] as List<*>

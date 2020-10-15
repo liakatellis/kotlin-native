@@ -251,6 +251,17 @@ class K2Native : CLICompiler<K2NativeCompilerArguments>() {
                 }
                 put(DISABLE_FAKE_OVERRIDE_VALIDATOR, arguments.disableFakeOverrideValidator)
                 putIfNotNull(PRE_LINK_CACHES, parsePreLinkCachesValue(configuration, arguments.preLinkCaches))
+
+                put(MEMORY_MANAGER, when (arguments.memoryManager) {
+                    "legacy" -> {
+                        MemoryManager.LEGACY
+                    }
+                    "experimental" -> MemoryManager.EXPERIMENTAL
+                    else -> {
+                        configuration.report(ERROR, "Unsupported memory manager ${arguments.memoryManager}")
+                        MemoryManager.LEGACY
+                    }
+                })
             }
         }
     }
