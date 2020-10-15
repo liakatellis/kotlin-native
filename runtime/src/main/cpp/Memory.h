@@ -617,8 +617,6 @@ bool TryAddHeapRef(const ObjHeader* object);
 void ReleaseHeapRef(const ObjHeader* object) RUNTIME_NOTHROW;
 void ReleaseHeapRefNoCollect(const ObjHeader* object) RUNTIME_NOTHROW;
 
-void Kotlin_ObjCExport_releaseAssociatedObject(void* associatedObject);
-
 ForeignRefContext InitLocalForeignRef(ObjHeader* object);
 
 ForeignRefContext InitForeignRef(ObjHeader* object);

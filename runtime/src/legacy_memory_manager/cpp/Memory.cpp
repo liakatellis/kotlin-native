@@ -46,6 +46,10 @@
 #include "Utils.h"
 #include "WorkerBoundReference.h"
 
+#ifdef KONAN_OBJC_INTEROP
+#include "ObjCExport.h"
+#endif
+
 // If garbage collection algorithm for cyclic garbage to be used.
 // We are using the Bacon's algorithm for GC, see
 // http://researcher.watson.ibm.com/researcher/files/us-bacon/Bacon03Pure.pdf.

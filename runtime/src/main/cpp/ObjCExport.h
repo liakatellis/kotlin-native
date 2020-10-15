@@ -3,6 +3,8 @@
 
 #if KONAN_OBJC_INTEROP
 
+#if __OBJC__
+
 #import <objc/runtime.h>
 #import <Foundation/NSString.h>
 
@@ -38,6 +40,10 @@ extern "C" OBJ_GETTER(Kotlin_ObjCExport_refFromObjC, id obj);
 
 extern "C" id Kotlin_Interop_CreateNSStringFromKString(KRef str);
 extern "C" OBJ_GETTER(Kotlin_Interop_CreateKStringFromNSString, NSString* str);
+
+#endif // __OBJC__
+
+extern "C" ALWAYS_INLINE void Kotlin_ObjCExport_releaseAssociatedObject(void* associatedObject);
 
 #endif // KONAN_OBJC_INTEROP
 

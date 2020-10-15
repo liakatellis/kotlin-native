@@ -121,7 +121,6 @@ extern "C" OBJ_GETTER(Kotlin_ObjCExport_AllocInstanceWithAssociatedObject,
 
 static Class getOrCreateClass(const TypeInfo* typeInfo);
 static void initializeClass(Class clazz);
-extern "C" ALWAYS_INLINE void Kotlin_ObjCExport_releaseAssociatedObject(void* associatedObject);
 
 extern "C" id objc_retainAutoreleaseReturnValue(id self);
 
