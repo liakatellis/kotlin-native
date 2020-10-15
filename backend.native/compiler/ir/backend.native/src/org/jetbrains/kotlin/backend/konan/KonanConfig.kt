@@ -116,6 +116,8 @@ class KonanConfig(val project: Project, val configuration: CompilerConfiguration
     internal val runtimeNativeLibraries: List<String> = mutableListOf<String>().apply {
         add(if (debug) "debug.bc" else "release.bc")
         add(if (memoryModel == MemoryModel.STRICT) "strict.bc" else "relaxed.bc")
+        // TODO: Put it under a switch.
+        add("legacy_memory_manager.bc")
         if (shouldCoverLibraries || shouldCoverSources) add("profileRuntime.bc")
         if (configuration.get(KonanConfigKeys.ALLOCATION_MODE) == "mimalloc") {
             if (!target.supportsMimallocAllocator()) {

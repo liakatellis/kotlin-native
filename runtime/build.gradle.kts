@@ -37,7 +37,8 @@ bitcode {
             "${target}Relaxed",
             "${target}ProfileRuntime",
             "${target}Objc",
-            "${target}ExceptionsSupport"
+            "${target}ExceptionsSupport",
+            "${target}LegacyMemoryManager"
         )
         includeRuntime()
         linkerArgs.add(project.file("../common/build/bitcode/main/$target/hash.bc").path)
@@ -91,6 +92,10 @@ bitcode {
         includeRuntime()
         dependsOn("downloadGoogleTest")
         headersDirs += googletest.headersDirs
+    }
+
+    create("legacy_memory_manager") {
+        includeRuntime()
     }
 }
 
