@@ -409,10 +409,6 @@ extern "C" {
 #define OBJ_RESULT __result__
 #define OBJ_GETTER0(name) ObjHeader* name(ObjHeader** OBJ_RESULT)
 #define OBJ_GETTER(name, ...) ObjHeader* name(__VA_ARGS__, ObjHeader** OBJ_RESULT)
-#define MODEL_VARIANTS(returnType, name, ...)            \
-   returnType name(__VA_ARGS__) RUNTIME_NOTHROW;         \
-   returnType name##Strict(__VA_ARGS__) RUNTIME_NOTHROW; \
-   returnType name##Relaxed(__VA_ARGS__) RUNTIME_NOTHROW;
 #define RETURN_OBJ(value) { ObjHeader* __obj = value; \
     UpdateReturnRef(OBJ_RESULT, __obj);               \
     return __obj; }
@@ -445,25 +441,13 @@ void ResumeMemory(MemoryState* state);
 // Escape analysis algorithm is the provider of information for decision on exact aux slot
 // selection, and comes from upper bound esteemation of object lifetime.
 //
-OBJ_GETTER(AllocInstanceStrict, const TypeInfo* type_info) RUNTIME_NOTHROW;
-OBJ_GETTER(AllocInstanceRelaxed, const TypeInfo* type_info) RUNTIME_NOTHROW;
 OBJ_GETTER(AllocInstance, const TypeInfo* type_info) RUNTIME_NOTHROW;
 
-OBJ_GETTER(AllocArrayInstanceStrict, const TypeInfo* type_info, int32_t elements);
-OBJ_GETTER(AllocArrayInstanceRelaxed, const TypeInfo* type_info, int32_t elements);
 OBJ_GETTER(AllocArrayInstance, const TypeInfo* type_info, int32_t elements);
 
-OBJ_GETTER(InitInstanceStrict,
-    ObjHeader** location, const TypeInfo* typeInfo, void (*ctor)(ObjHeader*));
-OBJ_GETTER(InitInstanceRelaxed,
-    ObjHeader** location, const TypeInfo* typeInfo, void (*ctor)(ObjHeader*));
 OBJ_GETTER(InitInstance,
     ObjHeader** location, const TypeInfo* typeInfo, void (*ctor)(ObjHeader*));
 
-OBJ_GETTER(InitSharedInstanceStrict,
-    ObjHeader** location, const TypeInfo* typeInfo, void (*ctor)(ObjHeader*));
-OBJ_GETTER(InitSharedInstanceRelaxed,
-    ObjHeader** location, const TypeInfo* typeInfo, void (*ctor)(ObjHeader*));
 OBJ_GETTER(InitSharedInstance,
     ObjHeader** location, const TypeInfo* typeInfo, void (*ctor)(ObjHeader*));
 
@@ -497,23 +481,23 @@ void WeakReferenceCounterClear(ObjHeader* counter);
 extern const bool IsStrictMemoryModel;
 
 // Sets stack location.
-MODEL_VARIANTS(void, SetStackRef, ObjHeader** location, const ObjHeader* object);
+void SetStackRef(ObjHeader** location, const ObjHeader* object) RUNTIME_NOTHROW;
 // Sets heap location.
-MODEL_VARIANTS(void, SetHeapRef, ObjHeader** location, const ObjHeader* object);
+void SetHeapRef(ObjHeader** location, const ObjHeader* object) RUNTIME_NOTHROW;
 // Zeroes heap location.
 void ZeroHeapRef(ObjHeader** location) RUNTIME_NOTHROW;
 // Zeroes an array.
 void ZeroArrayRefs(ArrayHeader* array) RUNTIME_NOTHROW;
 // Zeroes stack location.
-MODEL_VARIANTS(void, ZeroStackRef, ObjHeader** location);
+void ZeroStackRef(ObjHeader** location) RUNTIME_NOTHROW;
 // Updates stack location.
-MODEL_VARIANTS(void, UpdateStackRef, ObjHeader** location, const ObjHeader* object);
+void UpdateStackRef(ObjHeader** location, const ObjHeader* object) RUNTIME_NOTHROW;
 // Updates heap/static data location.
-MODEL_VARIANTS(void, UpdateHeapRef, ObjHeader** location, const ObjHeader* object);
+void UpdateHeapRef(ObjHeader** location, const ObjHeader* object) RUNTIME_NOTHROW;
 // Updates location if it is null, atomically.
-MODEL_VARIANTS(void, UpdateHeapRefIfNull, ObjHeader** location, const ObjHeader* object);
+void UpdateHeapRefIfNull(ObjHeader** location, const ObjHeader* object) RUNTIME_NOTHROW;
 // Updates reference in return slot.
-MODEL_VARIANTS(void, UpdateReturnRef, ObjHeader** returnSlot, const ObjHeader* object);
+void UpdateReturnRef(ObjHeader** returnSlot, const ObjHeader* object) RUNTIME_NOTHROW;
 // Compares and swaps reference with taken lock.
 OBJ_GETTER(SwapHeapRefLocked,
     ObjHeader** location, ObjHeader* expectedValue, ObjHeader* newValue, int32_t* spinlock,
@@ -524,9 +508,9 @@ void SetHeapRefLocked(ObjHeader** location, ObjHeader* newValue, int32_t* spinlo
 // Reads reference with taken lock.
 OBJ_GETTER(ReadHeapRefLocked, ObjHeader** location, int32_t* spinlock, int32_t* cookie) RUNTIME_NOTHROW;
 // Called on frame enter, if it has object slots.
-MODEL_VARIANTS(void, EnterFrame, ObjHeader** start, int parameters, int count);
+void EnterFrame(ObjHeader** start, int parameters, int count) RUNTIME_NOTHROW;
 // Called on frame leave, if it has object slots.
-MODEL_VARIANTS(void, LeaveFrame, ObjHeader** start, int parameters, int count);
+void LeaveFrame(ObjHeader** start, int parameters, int count) RUNTIME_NOTHROW;
 // Clears object subgraph references from memory subsystem, and optionally
 // checks if subgraph referenced by given root is disjoint from the rest of
 // object graph, i.e. no external references exists.
@@ -630,8 +614,8 @@ extern "C" {
 
 bool TryAddHeapRef(const ObjHeader* object);
 
-MODEL_VARIANTS(void, ReleaseHeapRef, const ObjHeader* object);
-MODEL_VARIANTS(void, ReleaseHeapRefNoCollect, const ObjHeader* object);
+void ReleaseHeapRef(const ObjHeader* object) RUNTIME_NOTHROW;
+void ReleaseHeapRefNoCollect(const ObjHeader* object) RUNTIME_NOTHROW;
 
 void Kotlin_ObjCExport_releaseAssociatedObject(void* associatedObject);
 

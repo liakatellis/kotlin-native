@@ -23,24 +23,17 @@ void ensureUsed(Ret (*f)(Args...)) {
 // TODO: Make sure this function gets DCE'd in the final binary.
 // TODO: Should be done with some sort of annotation on the declaration.
 void EnsureDeclarationsEmitted() {
-#define ensureUsedModels(name) \
-  do {                         \
-    ensureUsed(name);          \
-    ensureUsed(name##Strict);  \
-    ensureUsed(name##Relaxed); \
-  } while(false)               \
-
-    ensureUsedModels(AllocInstance);
-    ensureUsedModels(AllocArrayInstance);
-    ensureUsedModels(InitInstance);
-    ensureUsedModels(InitSharedInstance);
-    ensureUsedModels(UpdateHeapRef);
-    ensureUsedModels(UpdateStackRef);
-    ensureUsedModels(UpdateReturnRef);
+    ensureUsed(AllocInstance);
+    ensureUsed(AllocArrayInstance);
+    ensureUsed(InitInstance);
+    ensureUsed(InitSharedInstance);
+    ensureUsed(UpdateHeapRef);
+    ensureUsed(UpdateStackRef);
+    ensureUsed(UpdateReturnRef);
     ensureUsed(ZeroHeapRef);
     ensureUsed(ZeroArrayRefs);
-    ensureUsedModels(EnterFrame);
-    ensureUsedModels(LeaveFrame);
+    ensureUsed(EnterFrame);
+    ensureUsed(LeaveFrame);
     ensureUsed(AddTLSRecord);
     ensureUsed(ClearTLSRecord);
     ensureUsed(LookupTLS);
@@ -48,6 +41,4 @@ void EnsureDeclarationsEmitted() {
     ensureUsed(CheckLifetimesConstraint);
     ensureUsed(FreezeSubgraph);
     ensureUsed(FreezeSubgraph);
-
-#undef ensureUsedModels
 }
