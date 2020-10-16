@@ -5,13 +5,13 @@
 
 package org.jetbrains.kotlin.backend.konan
 
+import org.jetbrains.kotlin.backend.common.ir.isTopLevel
 import org.jetbrains.kotlin.backend.konan.descriptors.findPackage
 import org.jetbrains.kotlin.backend.konan.ir.containsNull
 import org.jetbrains.kotlin.backend.konan.ir.getSuperClassNotAny
 import org.jetbrains.kotlin.builtins.PrimitiveType
 import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.ir.declarations.IrClass
-import org.jetbrains.kotlin.ir.declarations.IrPackageFragment
 import org.jetbrains.kotlin.ir.declarations.IrProperty
 import org.jetbrains.kotlin.ir.symbols.IrClassSymbol
 import org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol
@@ -44,7 +44,7 @@ fun IrType.getInlinedClassNative(): IrClass? = IrTypeInlineClassesSupport.getInl
  */
 fun IrType.isInlinedNative(): Boolean = IrTypeInlineClassesSupport.isInlined(this)
 fun IrClass.isInlined(): Boolean = IrTypeInlineClassesSupport.isInlined(this)
-fun IrClass.isNativePrimitiveType() = !IrTypeInlineClassesSupport.isNestedClass(this) &&
+fun IrClass.isNativePrimitiveType() = IrTypeInlineClassesSupport.isTopLevelClass(this) &&
         KonanPrimitiveType.byFqNameParts[packageFqName]?.get(name) != null
 
 fun KotlinType.getInlinedClass(): ClassDescriptor? = KotlinTypeInlineClassesSupport.getInlinedClass(this)
@@ -123,7 +123,7 @@ internal abstract class InlineClassesSupport<Class : Any, Type : Any> {
     protected abstract fun getInlinedClassUnderlyingType(clazz: Class): Type
     protected abstract fun getPackageFqName(clazz: Class): FqName?
     protected abstract fun getName(clazz: Class): Name?
-    abstract fun isNestedClass(clazz: Class): Boolean
+    abstract fun isTopLevelClass(clazz: Class): Boolean
 
     @JvmName("classIsInlined")
     fun isInlined(clazz: Class): Boolean = getInlinedClass(clazz) != null
@@ -135,10 +135,12 @@ internal abstract class InlineClassesSupport<Class : Any, Type : Any> {
             getInlinedClass(erase(type), isNullable(type))
 
     protected fun getKonanPrimitiveType(clazz: Class): KonanPrimitiveType? =
-            if (isNestedClass(clazz)) null else KonanPrimitiveType.byFqNameParts[getPackageFqName(clazz)]?.get(getName(clazz))
+            if (isTopLevelClass(clazz))
+                KonanPrimitiveType.byFqNameParts[getPackageFqName(clazz)]?.get(getName(clazz))
+            else null
 
     protected fun isImplicitInlineClass(clazz: Class): Boolean =
-        !isNestedClass(clazz) && (getKonanPrimitiveType(clazz) != null ||
+        isTopLevelClass(clazz) && (getKonanPrimitiveType(clazz) != null ||
                 getName(clazz) == KonanFqNames.nativePtr.shortName() && getPackageFqName(clazz) == KonanFqNames.internalPackageName  ||
                 getName(clazz) == InteropFqNames.cPointer.shortName() && getPackageFqName(clazz) == InteropFqNames.cPointer.parent().toSafe())
 
@@ -265,7 +267,7 @@ internal object KotlinTypeInlineClassesSupport : InlineClassesSupport<ClassDescr
     override fun getName(clazz: ClassDescriptor) =
             clazz.name
 
-    override fun isNestedClass(clazz: ClassDescriptor): Boolean = clazz.containingDeclaration is ClassDescriptor
+    override fun isTopLevelClass(clazz: ClassDescriptor): Boolean = clazz.containingDeclaration !is ClassDescriptor
 }
 
 private object IrTypeInlineClassesSupport : InlineClassesSupport<IrClass, IrType>() {
@@ -311,5 +313,5 @@ private object IrTypeInlineClassesSupport : InlineClassesSupport<IrClass, IrType
     override fun getName(clazz: IrClass): Name? =
             clazz.name
 
-    override fun isNestedClass(clazz: IrClass): Boolean = clazz.parent !is IrPackageFragment
+    override fun isTopLevelClass(clazz: IrClass): Boolean = clazz.isTopLevel
 }

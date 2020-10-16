@@ -34,16 +34,19 @@ import org.jetbrains.kotlin.utils.addToStdlib.firstNotNullResult
 
 internal val interopPackageName = InteropFqNames.packageName
 internal val objCObjectFqName = interopPackageName.child(Name.identifier("ObjCObject"))
-internal val objCObjectIdSignature = getPublicSignature(interopPackageName, "ObjCObject")
+internal val objCObjectIdSignature = getTopLevelPublicSignature(objCObjectFqName)
 private val objCClassFqName = interopPackageName.child(Name.identifier("ObjCClass"))
-private val objCClassIdSignature = getPublicSignature(interopPackageName,"ObjCClass")
+private val objCClassIdSignature = getTopLevelPublicSignature(objCClassFqName)
 private val objCProtocolFqName = interopPackageName.child(Name.identifier("ObjCProtocol"))
-private val objCProtocolIdSignature = getPublicSignature(interopPackageName,"ObjCProtocol")
+private val objCProtocolIdSignature = getTopLevelPublicSignature(objCProtocolFqName)
 internal val externalObjCClassFqName = interopPackageName.child(Name.identifier("ExternalObjCClass"))
 private val objCMethodFqName = interopPackageName.child(Name.identifier("ObjCMethod"))
 private val objCConstructorFqName = FqName("kotlinx.cinterop.ObjCConstructor")
 private val objCFactoryFqName = interopPackageName.child(Name.identifier("ObjCFactory"))
 private val objcnamesForwardDeclarationsPackageName = Name.identifier("objcnames")
+
+private fun getTopLevelPublicSignature(fqName: FqName): IdSignature.PublicSignature =
+        getPublicSignature(fqName.parent(), fqName.shortName().asString())
 
 fun ClassDescriptor.isObjCClass(): Boolean =
                 this.containingDeclaration.fqNameSafe != interopPackageName &&

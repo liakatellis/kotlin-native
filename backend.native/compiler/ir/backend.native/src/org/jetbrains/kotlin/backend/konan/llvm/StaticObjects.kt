@@ -94,9 +94,8 @@ internal fun StaticData.createConstArrayList(array: ConstPointer, length: Int): 
     // to match the sorting order of the real ArrayList().
     val sorted = mutableListOf<ConstValue>()
     context.getLayoutBuilder(arrayListClass).fields.forEach {
-        if (it.parent == arrayListClass) {
-            sorted.add(arrayListFields[it.name.asString()]!!)
-        }
+        require (it.parent == arrayListClass)
+        sorted.add(arrayListFields[it.name.asString()]!!)
     }
 
     return createConstKotlinObject(arrayListClass, *sorted.toTypedArray())
