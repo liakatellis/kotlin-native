@@ -267,7 +267,7 @@ or pass an absolute to your own distribution.
 Don't forget to set `llvmVersion.<HOST_NAME>` to the version of your LLVM distribution.
 
 #### Example. Using LLVM from an absolute path.
-Assuming LLVM distribution is installed at `/usr` path, one can use specify a path to it 
+Assuming LLVM distribution is installed at `/usr` path, one can specify a path to it 
 with the `-Xoverride-konan-properties` option:
 ```
 konanc main.kt -Xoverride-konan-properties=llvmHome.linux_x64=/usr
