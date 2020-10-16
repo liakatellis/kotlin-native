@@ -26,7 +26,7 @@ import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 
 private fun IrClass.isClassTypeWithSignature(signature: IdSignature.PublicSignature): Boolean {
-    if (!symbol.isPublicApi || !symbol.signature.isPublic) return false
+    if (!symbol.isPublicApi) return false
     return signature == symbol.signature
 }
 
