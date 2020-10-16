@@ -458,18 +458,21 @@ private fun parseDebugPrefixMap(
 private fun parseOverrideKonanProperties(
         arguments: K2NativeCompilerArguments,
         configuration: CompilerConfiguration
-): Map<String, String> = arguments.overrideKonanProperties?.split(";").orEmpty().mapNotNull {
-    val keyValueSeparatorIndex = it.indexOf('=')
-    if (keyValueSeparatorIndex > 0) {
-        it.substringBefore('=') to it.substringAfter('=')
-    } else {
-        configuration.report(
-                ERROR,
-                "incorrect property format: expected '<key>=<value>', got '$it'"
-        )
-        null
-    }
-}.toMap()
+): Map<String, String> =
+        // We use `;` as delimiter because properties may contain comma-separated values.
+        // For example, target cpu features.
+        arguments.overrideKonanProperties?.split(";").orEmpty().mapNotNull {
+            val keyValueSeparatorIndex = it.indexOf('=')
+            if (keyValueSeparatorIndex > 0) {
+                it.substringBefore('=') to it.substringAfter('=')
+            } else {
+                configuration.report(
+                        ERROR,
+                        "incorrect property format: expected '<key>=<value>', got '$it'"
+                )
+                null
+            }
+        }.toMap()
 
 
 
